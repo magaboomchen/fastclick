@@ -211,7 +211,8 @@ class AggregateIPFlows : public BatchElement, public AggregateNotifier { public:
 	Timestamp _first_timestamp;
 	uint32_t _filepos;
 	uint32_t _packets[2];
-	StatFlowInfo(uint32_t ports, FlowInfo *next, uint32_t agg) : FlowInfo(ports, next, agg) { _packets[0] = _packets[1] = 0; }
+    uint64_t _bytes[2];
+	StatFlowInfo(uint32_t ports, FlowInfo *next, uint32_t agg) : FlowInfo(ports, next, agg) { _packets[0] = _packets[1] = 0; _bytes[0] = _bytes[1] = 0; }
     };
 #endif
 
@@ -274,7 +275,7 @@ class AggregateIPFlows : public BatchElement, public AggregateNotifier { public:
     int handle_packet(Packet *);
 
     static int write_handler(const String &, Element *, void *, ErrorHandler *) CLICK_COLD;
-
+    static String read_handler(Element *, void *) CLICK_COLD;
 };
 
 CLICK_ENDDECLS
