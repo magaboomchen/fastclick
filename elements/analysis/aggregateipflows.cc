@@ -262,6 +262,7 @@ AggregateIPFlows::packet_emit_hook(const Packet *p, const click_ip *iph, FlowInf
     if (stats() && PAINT_ANNO(p) < 2) {
 	StatFlowInfo *sinfo = static_cast<StatFlowInfo *>(finfo);
 	sinfo->_packets[PAINT_ANNO(p)]++;
+    sinfo->_bytes[PAINT_ANNO(p)] += p->length();
     }
 #endif
 }
@@ -626,7 +627,7 @@ AggregateIPFlows::pull_batch(int, int max)
 }
 #endif
 
-enum { H_CLEAR };
+enum { H_CLEAR, H_UDP, H_TCP };
 
 int
 AggregateIPFlows::write_handler(const String &, Element *e, void *thunk, ErrorHandler *)
@@ -641,7 +642,73 @@ AggregateIPFlows::write_handler(const String &, Element *e, void *thunk, ErrorHa
 	  return 0;
       }
       default:
-	return -1;
+	    return -1;
+    }
+}
+
+String
+AggregateIPFlows::read_handler(Element *e, void *thunk) 
+{
+    AggregateIPFlows *af = static_cast<AggregateIPFlows *>(e);
+    switch ((intptr_t)thunk) {
+        case H_UDP: {
+            String output = "{\"proto\": \"UDP\", \"flows\": [";
+            for (Map::iterator iter = af->_udp_map.begin(); iter.live(); iter++) {
+                HostPairInfo *hpinfo = &iter.value();
+                FlowInfo *finfo = hpinfo->_flows;
+                const HostPair* hp = &iter.key();
+                StatFlowInfo *sinfo = static_cast<StatFlowInfo *>(finfo);
+                IPAddress src(sinfo->reverse() ? hp->b : hp->a);
+                int sport = (ntohl(sinfo->_ports) >> (sinfo->reverse() ? 0 : 16)) & 0xFFFF;
+	            IPAddress dst(sinfo->reverse() ? hp->a : hp->b);
+	            int dport = (ntohl(sinfo->_ports) >> (sinfo->reverse() ? 16 : 0)) & 0xFFFF;
+                Timestamp duration = sinfo->_last_timestamp - sinfo->_first_timestamp;
+                String res = "{\"aggregate\": " + String(sinfo->_aggregate) + ",";
+                res = res + " \"src\": \"" + src.unparse().c_str() + "\",";
+                res = res + " \"sport\": " + String(sport) + ",";
+                res = res + " \"dst\": \"" + dst.unparse().c_str() + "\",";
+                res = res + " \"sport\": " + String(dport) + ",";
+                res = res + " \"begin\": " + String(sinfo->_first_timestamp.sec()) + "." + String(sinfo->_first_timestamp.subsec()) + ",";
+                res = res + " \"duration\": " + String(duration.sec()) + "." + String(duration.subsec()) + ",";
+                res = res + " \"dir0_packets\": " + String(sinfo->_packets[0]) + ",";
+                res = res + " \"dir0_bytes\": " + String(sinfo->_bytes[0]) + ",";
+                res = res + " \"dir1_packets\": " + String(sinfo->_packets[1]) + ","; 
+                res = res + " \"dir1_bytes\": " + String(sinfo->_bytes[1]);
+                output = output + res + "},";
+            }
+            output = output + "]}";
+            return output;
+        }
+        case H_TCP: {
+            String output = "{\"proto\": \"TCP\", \"flows\": [";
+            for (Map::iterator iter = af->_tcp_map.begin(); iter.live(); iter++) {
+                HostPairInfo *hpinfo = &iter.value();
+                FlowInfo *finfo = hpinfo->_flows;
+                const HostPair* hp = &iter.key();
+                StatFlowInfo *sinfo = static_cast<StatFlowInfo *>(finfo);
+                IPAddress src(sinfo->reverse() ? hp->b : hp->a);
+                int sport = (ntohl(sinfo->_ports) >> (sinfo->reverse() ? 0 : 16)) & 0xFFFF;
+	            IPAddress dst(sinfo->reverse() ? hp->a : hp->b);
+	            int dport = (ntohl(sinfo->_ports) >> (sinfo->reverse() ? 16 : 0)) & 0xFFFF;
+                Timestamp duration = sinfo->_last_timestamp - sinfo->_first_timestamp;
+                String res = "{\"aggregate\": " + String(sinfo->_aggregate) + ",";
+                res = res + " \"src\": \"" + src.unparse().c_str() + "\",";
+                res = res + " \"sport\": " + String(sport) + ",";
+                res = res + " \"dst\": \"" + dst.unparse().c_str() + "\",";
+                res = res + " \"sport\": " + String(dport) + ",";
+                res = res + " \"begin\": " + String(sinfo->_first_timestamp.sec()) + "." + String(sinfo->_first_timestamp.subsec()) + ",";
+                res = res + " \"duration\": " + String(duration.sec()) + "." + String(duration.subsec()) + ",";
+                res = res + " \"dir0_packets\": " + String(sinfo->_packets[0]) + ",";
+                res = res + " \"dir0_bytes\": " + String(sinfo->_bytes[0]) + ",";
+                res = res + " \"dir1_packets\": " + String(sinfo->_packets[1]) + ","; 
+                res = res + " \"dir1_bytes\": " + String(sinfo->_bytes[1]);
+                output = output + res + "},";
+            }
+            output = output + "]}";
+            return output;
+        }
+        default:
+            return "<error>";
     }
 }
 
@@ -649,6 +716,9 @@ void
 AggregateIPFlows::add_handlers()
 {
     add_write_handler("clear", write_handler, H_CLEAR);
+    
+    add_read_handler("udp", read_handler, H_UDP);
+    add_read_handler("tcp", read_handler, H_TCP);
 }
 
 ELEMENT_REQUIRES(AggregateNotifier)
