@@ -227,14 +227,19 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
 
     if (rte_eal_process_type() == RTE_PROC_PRIMARY) {
         // Create a pktmbuf pool for each active socket
+        click_chatter("_nr_pktmbuf_pools:%d", _nr_pktmbuf_pools);
+        
         for (unsigned i = 0; i < _nr_pktmbuf_pools; i++) {
+                click_chatter("i: %d, _pktmbuf_pools[i]: %d.", i, _pktmbuf_pools[i]);
                 if (!_pktmbuf_pools[i]) {
+                        click_chatter(" Create a pktmbuf pool for socket: %d ", i);
+                        click_chatter(" In fact, the socket is:%d", rte_socket_id());
                         String mempool_name = DPDKDevice::MEMPOOL_PREFIX + String(i);
                         const char* name = mempool_name.c_str();
                         _pktmbuf_pools[i] =
 #if RTE_VERSION >= RTE_VERSION_NUM(2,2,0,0)
                         rte_pktmbuf_pool_create(name, get_nb_mbuf(i),
-                                                MBUF_CACHE_SIZE, 0, MBUF_DATA_SIZE, i);
+                                                MBUF_CACHE_SIZE, 0, MBUF_DATA_SIZE, rte_socket_id()); //i);
 #else
                         rte_mempool_create(
                                         name, get_nb_mbuf(i), MBUF_SIZE, MBUF_CACHE_SIZE,
@@ -249,6 +254,8 @@ int DPDKDevice::alloc_pktmbufs(ErrorHandler* errh)
                         }
                 }
         }
+                                // errh->error("Could not allocate packet MBuf pools %d with %d buffers : error %d (%s)",i, get_nb_mbuf(i), rte_errno,rte_strerror(rte_errno));
+                                // return rte_errno;
     } else {
         int i = 0;
         rte_mempool_walk(add_pool,(void*)&i);
